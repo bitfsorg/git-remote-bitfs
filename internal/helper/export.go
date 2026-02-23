@@ -2,9 +2,15 @@ package helper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime"
+	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +24,7 @@ import (
 	"github.com/tongxiaofeng/libbitfs/metanet"
 	"github.com/tongxiaofeng/libbitfs/network"
 	libtx "github.com/tongxiaofeng/libbitfs/tx"
+	"github.com/tongxiaofeng/libbitfs/wallet"
 )
 
 // ChainPusher abstracts the chain write operations for testability.
@@ -57,7 +64,8 @@ func (d *defaultChainPusher) PushAnchor(ctx context.Context, params *chain.Ancho
 type exportHandler struct {
 	helper  *Helper
 	parser  *stream.Parser
-	blobs   map[string][]byte // mark -> content
+	pusher  ChainPusher        // optional; nil = create default from config
+	blobs   map[string][]byte  // mark -> content
 	commits []*stream.Commit
 	resets  []*stream.Reset
 	tags    []*stream.Tag
@@ -189,21 +197,46 @@ func (eh *exportHandler) pushRef(ctx context.Context, ref string, commits []*str
 	// Load access policy from .bitfsattributes (default: all private).
 	policy := config.DefaultPolicy()
 
+	// Try to load .bitfsattributes from the commit's file tree.
+	for _, c := range commits {
+		for _, op := range c.FileOps {
+			if op.Path == ".bitfsattributes" && op.Op == stream.FileModify {
+				var data []byte
+				if op.DataRef == "inline" {
+					data = op.Data
+				} else if d, ok := eh.blobs[op.DataRef]; ok {
+					data = d
+				}
+				if data != nil {
+					if p, err := config.ParseAttributes(data); err == nil {
+						policy = p
+					}
+				}
+			}
+		}
+	}
+
 	store := h.initUTXOStore()
 	if store == nil {
 		return fmt.Errorf("no UTXO store available")
 	}
 
 	// Derive branch key for the anchor.
-	branchPriv, err := ec.NewPrivateKey()
+	// Deterministic from wallet + SHA256(ref), or random if wallet is nil.
+	branchPriv, branchPub, err := deriveBranchKey(h.config.Wallet, h.config.VaultIndex, ref)
 	if err != nil {
-		return fmt.Errorf("generating branch key: %w", err)
+		return fmt.Errorf("deriving branch key: %w", err)
 	}
-	branchPub := branchPriv.PubKey()
 
 	// Track the latest commit for the anchor.
 	var lastCommit *stream.Commit
-	var nodeOps []chain.NodeOp
+
+	// fileEntry tracks a file NodeOp alongside its path for directory tree building.
+	type fileEntry struct {
+		op   chain.NodeOp
+		path string
+	}
+	var fileEntries []fileEntry
 	nodeIndex := uint32(0)
 
 	for _, c := range commits {
@@ -217,45 +250,74 @@ func (eh *exportHandler) pushRef(ctx context.Context, ref string, commits []*str
 					return fmt.Errorf("building node op for %s: %w", op.Path, err)
 				}
 				if nodeOp != nil {
-					nodeOps = append(nodeOps, *nodeOp)
+					fileEntries = append(fileEntries, fileEntry{op: *nodeOp, path: op.Path})
 				}
 
 			case stream.FileDelete:
 				// For MVP, deletes are tracked but not pushed as chain ops.
-				// In full implementation, we'd mark the node as deleted.
 				h.debugf("delete: %s (tracked, not pushed to chain in MVP)", op.Path)
 			}
 		}
 	}
 
-	// If we have node ops, push them in a batch TX.
-	if len(nodeOps) > 0 {
+	// Build directory tree from file entries and collect all node ops.
+	var allOps []chain.NodeOp
+	var rootDirPubKey *ec.PublicKey
+
+	if len(fileEntries) > 0 {
+		// Extract file ops and paths for directory tree building.
+		var fileOps []chain.NodeOp
+		var filePaths []string
+		for _, fe := range fileEntries {
+			fileOps = append(fileOps, fe.op)
+			filePaths = append(filePaths, fe.path)
+		}
+
+		dirOps, rootPub, err := eh.buildDirTree(fileOps, filePaths)
+		if err != nil {
+			return fmt.Errorf("building directory tree: %w", err)
+		}
+
+		// All ops: files first, then directories (leaf dirs to root).
+		allOps = append(allOps, fileOps...)
+		allOps = append(allOps, dirOps...)
+		rootDirPubKey = rootPub
+	}
+
+	// Push all node ops (files + directories) in a batch TX.
+	var pushResult *chain.PushResult
+	if len(allOps) > 0 {
 		feeUTXO := store.AllocateFeeUTXO(10000) // 10k sat minimum
 		if feeUTXO == nil {
 			return fmt.Errorf("no fee UTXOs available")
 		}
 
-		txFeeUTXO := &libtx.UTXO{
-			TxID:         hexToBytes(feeUTXO.TxID),
-			Vout:         feeUTXO.Vout,
-			Amount:       feeUTXO.Amount,
-			ScriptPubKey: hexToBytes(feeUTXO.ScriptPubKey),
+		txFeeUTXO, err := feeUTXOToLibtx(feeUTXO)
+		if err != nil {
+			return fmt.Errorf("converting fee UTXO: %w", err)
+		}
+
+		pusher := eh.pusher
+		if pusher == nil {
+			pusher = &defaultChainPusher{
+				writer: chain.NewWriter(h.config.Blockchain),
+				bc:     h.config.Blockchain,
+			}
 		}
 
 		pushParams := &chain.PushParams{
-			Ops:      nodeOps,
+			Ops:      allOps,
 			FeeUTXOs: []*libtx.UTXO{txFeeUTXO},
 		}
 
-		writer := chain.NewWriter(h.config.Blockchain)
-		result, err := writer.Push(ctx, pushParams)
+		pushResult, err = pusher.PushNodes(ctx, pushParams)
 		if err != nil {
 			return fmt.Errorf("pushing nodes: %w", err)
 		}
 
 		// Save any change UTXO back.
-		if result.ChangeUTXO != nil {
-			store.AddFeeUTXO(feeUTXOFromLibtx(result.ChangeUTXO))
+		if pushResult.ChangeUTXO != nil {
+			store.AddFeeUTXO(feeUTXOFromLibtx(pushResult.ChangeUTXO))
 		}
 	}
 
@@ -270,12 +332,15 @@ func (eh *exportHandler) pushRef(ctx context.Context, ref string, commits []*str
 		var refUTXO *libtx.UTXO
 		existingRef := store.GetRefUTXO(ref)
 		if existingRef != nil {
-			refUTXO = &libtx.UTXO{
-				TxID:         hexToBytes(existingRef.TxID),
-				Vout:         existingRef.Vout,
-				Amount:       existingRef.Amount,
-				ScriptPubKey: hexToBytes(existingRef.ScriptPubKey),
+			refUTXO, err = refUTXOToLibtx(existingRef)
+			if err != nil {
+				return fmt.Errorf("converting ref UTXO: %w", err)
 			}
+		}
+
+		anchorFeeUTXO, err := feeUTXOToLibtx(feeUTXO)
+		if err != nil {
+			return fmt.Errorf("converting anchor fee UTXO: %w", err)
 		}
 
 		anchorParams := &chain.AnchorParams{
@@ -286,12 +351,24 @@ func (eh *exportHandler) pushRef(ctx context.Context, ref string, commits []*str
 			CommitMessage: lastCommit.Message,
 			Timestamp:     uint64(time.Now().Unix()),
 			RefUTXO:       refUTXO,
-			FeeUTXO: &libtx.UTXO{
-				TxID:         hexToBytes(feeUTXO.TxID),
-				Vout:         feeUTXO.Vout,
-				Amount:       feeUTXO.Amount,
-				ScriptPubKey: hexToBytes(feeUTXO.ScriptPubKey),
-			},
+			FeeUTXO:       anchorFeeUTXO,
+		}
+
+		// Set tree root info from the push result.
+		if rootDirPubKey != nil && pushResult != nil {
+			anchorParams.TreeRootPNode = rootDirPubKey.Compressed()
+			rootPNodeHex := hex.EncodeToString(rootDirPubKey.Compressed())
+			if rootUTXO, ok := pushResult.NodeUTXOs[rootPNodeHex]; ok {
+				anchorParams.TreeRootTxID = rootUTXO.TxID
+			}
+		}
+
+		// Set parent anchor TxID for chain linking (subsequent pushes).
+		if existingRef != nil && existingRef.AnchorTxID != "" {
+			parentTxID, pErr := hex.DecodeString(existingRef.AnchorTxID)
+			if pErr == nil && len(parentTxID) > 0 {
+				anchorParams.ParentAnchorTxIDs = [][]byte{parentTxID}
+			}
 		}
 
 		anchorResult, err := chain.BuildAnchor(anchorParams)
@@ -375,18 +452,18 @@ func (eh *exportHandler) buildFileNodeOp(op stream.FileOp, policy *config.Access
 		accessMode = metanet.AccessPaid
 	}
 
-	// Build metanet Node payload (metadata only; ciphertext is stored
-	// off-chain or in separate data outputs, not in OP_RETURN).
+	// Build metanet Node payload with inline encrypted content.
 	node := &metanet.Node{
-		Version:   1,
-		Type:      metanet.NodeTypeFile,
-		Op:        metanet.OpCreate,
-		MimeType:  guessMimeType(op.Path),
-		FileSize:  uint64(len(content)),
-		Access:    accessMode,
-		KeyHash:   encResult.KeyHash,
-		Encrypted: true,
-		Timestamp: uint64(time.Now().Unix()),
+		Version:    1,
+		Type:       metanet.NodeTypeFile,
+		Op:         metanet.OpCreate,
+		MimeType:   guessMimeType(op.Path),
+		FileSize:   uint64(len(content)),
+		Access:     accessMode,
+		KeyHash:    encResult.KeyHash,
+		Encrypted:  true,
+		EncPayload: encResult.Ciphertext,
+		Timestamp:  uint64(time.Now().Unix()),
 	}
 
 	payload, err := metanet.SerializePayload(node)
@@ -404,41 +481,241 @@ func (eh *exportHandler) buildFileNodeOp(op stream.FileOp, policy *config.Access
 	}, nil
 }
 
-// guessMimeType returns a basic MIME type guess based on file extension.
-func guessMimeType(path string) string {
-	lower := strings.ToLower(path)
-	switch {
-	case strings.HasSuffix(lower, ".go"):
-		return "text/x-go"
-	case strings.HasSuffix(lower, ".js"):
-		return "text/javascript"
-	case strings.HasSuffix(lower, ".py"):
-		return "text/x-python"
-	case strings.HasSuffix(lower, ".md"):
-		return "text/markdown"
-	case strings.HasSuffix(lower, ".json"):
-		return "application/json"
-	case strings.HasSuffix(lower, ".html"), strings.HasSuffix(lower, ".htm"):
-		return "text/html"
-	case strings.HasSuffix(lower, ".css"):
-		return "text/css"
-	case strings.HasSuffix(lower, ".txt"):
-		return "text/plain"
-	case strings.HasSuffix(lower, ".png"):
-		return "image/png"
-	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
-		return "image/jpeg"
-	default:
-		return "application/octet-stream"
+// buildDirTree constructs directory NodeOps from the file operations.
+// It creates a directory node for each unique parent directory, with proper
+// ChildEntry lists and MerkleRoot hashes.
+// Returns directory ops (leaf dirs first, root last) and the root dir's PubKey.
+func (eh *exportHandler) buildDirTree(fileOps []chain.NodeOp, filePaths []string) ([]chain.NodeOp, *ec.PublicKey, error) {
+	// dirInfo tracks a directory being built.
+	type dirInfo struct {
+		path     string
+		privKey  *ec.PrivateKey
+		pubKey   *ec.PublicKey
+		children []metanet.ChildEntry
 	}
+
+	// Collect unique directory paths.
+	dirs := make(map[string]*dirInfo)
+
+	// Ensure root directory "." exists.
+	rootPriv, err := ec.NewPrivateKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generating root dir key: %w", err)
+	}
+	dirs["."] = &dirInfo{
+		path:    ".",
+		privKey: rootPriv,
+		pubKey:  rootPriv.PubKey(),
+	}
+
+	// Create directory entries for all intermediate paths.
+	for _, fp := range filePaths {
+		dir := path.Dir(fp)
+		if dir == "" {
+			dir = "."
+		}
+		// Ensure all ancestors exist.
+		for dir != "." {
+			if _, exists := dirs[dir]; !exists {
+				priv, err := ec.NewPrivateKey()
+				if err != nil {
+					return nil, nil, fmt.Errorf("generating dir key for %s: %w", dir, err)
+				}
+				dirs[dir] = &dirInfo{
+					path:    dir,
+					privKey: priv,
+					pubKey:  priv.PubKey(),
+				}
+			}
+			dir = path.Dir(dir)
+		}
+	}
+
+	// Add file entries to their parent directories.
+	for i, fp := range filePaths {
+		dir := path.Dir(fp)
+		if dir == "" {
+			dir = "."
+		}
+		dirEntry := dirs[dir]
+		child := metanet.ChildEntry{
+			Index:    uint32(len(dirEntry.children)),
+			Name:     path.Base(fp),
+			Type:     metanet.NodeTypeFile,
+			PubKey:   fileOps[i].PubKey.Compressed(),
+			Hardened: true,
+		}
+		dirEntry.children = append(dirEntry.children, child)
+	}
+
+	// Add subdirectory entries to their parent directories.
+	// Sort directory names to get deterministic ordering.
+	dirNames := make([]string, 0, len(dirs))
+	for name := range dirs {
+		if name != "." {
+			dirNames = append(dirNames, name)
+		}
+	}
+	sort.Strings(dirNames)
+
+	for _, dirName := range dirNames {
+		parentDir := path.Dir(dirName)
+		if parentDir == "" {
+			parentDir = "."
+		}
+		parentEntry := dirs[parentDir]
+		child := metanet.ChildEntry{
+			Index:    uint32(len(parentEntry.children)),
+			Name:     path.Base(dirName),
+			Type:     metanet.NodeTypeDir,
+			PubKey:   dirs[dirName].pubKey.Compressed(),
+			Hardened: true,
+		}
+		parentEntry.children = append(parentEntry.children, child)
+	}
+
+	// Build directory NodeOps bottom-up (leaf dirs first, root last).
+	// Sort by path depth descending so deepest directories come first.
+	allDirNames := append(dirNames, ".")
+	sort.Slice(allDirNames, func(i, j int) bool {
+		di := strings.Count(allDirNames[i], "/")
+		dj := strings.Count(allDirNames[j], "/")
+		if di != dj {
+			return di > dj // deeper directories first
+		}
+		return allDirNames[i] < allDirNames[j]
+	})
+
+	var dirOps []chain.NodeOp
+	for _, dirName := range allDirNames {
+		di := dirs[dirName]
+
+		// Compute MerkleRoot from children.
+		var merkleRoot []byte
+		if len(di.children) > 0 {
+			merkleRoot = metanet.ComputeDirectoryMerkleRoot(di.children)
+		}
+
+		node := &metanet.Node{
+			Version:        1,
+			Type:           metanet.NodeTypeDir,
+			Op:             metanet.OpCreate,
+			Children:       di.children,
+			NextChildIndex: uint32(len(di.children)),
+			MerkleRoot:     merkleRoot,
+			Timestamp:      uint64(time.Now().Unix()),
+		}
+
+		payload, err := metanet.SerializePayload(node)
+		if err != nil {
+			return nil, nil, fmt.Errorf("serializing dir payload for %s: %w", dirName, err)
+		}
+
+		dirOps = append(dirOps, chain.NodeOp{
+			PubKey:  di.pubKey,
+			PrivKey: di.privKey,
+			Payload: payload,
+			Purpose: "dir:" + dirName,
+		})
+	}
+
+	return dirOps, dirs["."].pubKey, nil
+}
+
+// guessMimeType returns a MIME type based on file extension using the
+// standard library, with fallbacks for source code types not in the
+// system MIME database.
+func guessMimeType(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+
+	// Fallback map for source code extensions that mime.TypeByExtension
+	// often doesn't know about (depends on OS MIME database).
+	fallbacks := map[string]string{
+		".go": "text/x-go",
+		".py": "text/x-python",
+		".md": "text/markdown",
+	}
+
+	// Try the standard library first.
+	if mimeType := mime.TypeByExtension(ext); mimeType != "" {
+		return mimeType
+	}
+
+	// Check our fallbacks for source code.
+	if mimeType, ok := fallbacks[ext]; ok {
+		return mimeType
+	}
+
+	return "application/octet-stream"
+}
+
+// deriveBranchKey derives a deterministic branch key for a ref.
+// Uses SHA256(ref) mod 2^31 as the BIP32 derivation index from the wallet.
+// Falls back to a random key when wallet is nil (testing mode).
+func deriveBranchKey(w *wallet.Wallet, vaultIndex uint32, ref string) (*ec.PrivateKey, *ec.PublicKey, error) {
+	if w == nil {
+		// No wallet: fall back to random key (testing/protocol-only mode).
+		priv, err := ec.NewPrivateKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generating random branch key: %w", err)
+		}
+		return priv, priv.PubKey(), nil
+	}
+
+	// Deterministic: derive from SHA256(ref) to get a stable index.
+	h := sha256.Sum256([]byte(ref))
+	index := binary.BigEndian.Uint32(h[:4]) & 0x7FFFFFFF // ensure non-hardened range
+
+	// Derive: m/44'/236'/(V+1)'/0/0/0/<index>
+	// Use index 0 as the "branch keys" namespace, then the ref-specific index.
+	kp, err := w.DeriveNodeKey(vaultIndex, []uint32{0, index}, []bool{true, true})
+	if err != nil {
+		return nil, nil, fmt.Errorf("deriving branch key: %w", err)
+	}
+	return kp.PrivateKey, kp.PublicKey, nil
 }
 
 // --- utility functions ---
 
-// hexToBytes decodes a hex string to bytes. Returns nil on error.
-func hexToBytes(s string) []byte {
-	b, _ := hex.DecodeString(s)
-	return b
+// hexToBytes decodes a hex string to bytes, returning an error on failure.
+func hexToBytes(s string) ([]byte, error) {
+	return hex.DecodeString(s)
+}
+
+// feeUTXOToLibtx converts a utxo.FeeUTXO to a libtx.UTXO with error handling.
+func feeUTXOToLibtx(u *utxo.FeeUTXO) (*libtx.UTXO, error) {
+	txid, err := hex.DecodeString(u.TxID)
+	if err != nil {
+		return nil, fmt.Errorf("decoding fee UTXO txid: %w", err)
+	}
+	script, err := hex.DecodeString(u.ScriptPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding fee UTXO script: %w", err)
+	}
+	return &libtx.UTXO{
+		TxID:         txid,
+		Vout:         u.Vout,
+		Amount:       u.Amount,
+		ScriptPubKey: script,
+	}, nil
+}
+
+// refUTXOToLibtx converts a utxo.RefUTXO to a libtx.UTXO with error handling.
+func refUTXOToLibtx(u *utxo.RefUTXO) (*libtx.UTXO, error) {
+	txid, err := hex.DecodeString(u.TxID)
+	if err != nil {
+		return nil, fmt.Errorf("decoding ref UTXO txid: %w", err)
+	}
+	script, err := hex.DecodeString(u.ScriptPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding ref UTXO script: %w", err)
+	}
+	return &libtx.UTXO{
+		TxID:         txid,
+		Vout:         u.Vout,
+		Amount:       u.Amount,
+		ScriptPubKey: script,
+	}, nil
 }
 
 // feeUTXOFromLibtx converts a libtx.UTXO to a utxo.FeeUTXO for the store.

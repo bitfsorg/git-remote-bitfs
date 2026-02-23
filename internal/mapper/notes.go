@@ -29,6 +29,7 @@ type NoteData struct {
 	AnchorTxID string `json:"anchor_txid,omitempty"` // hex-encoded anchor TX ID
 	TreePNode  string `json:"tree_pnode,omitempty"`  // root tree's P_node
 	TreeTxID   string `json:"tree_txid,omitempty"`   // root tree's TX ID
+	Ref        string `json:"ref,omitempty"`         // git ref (e.g. "refs/heads/main")
 }
 
 // NotesStore reads and writes git notes in refs/notes/bitfs.

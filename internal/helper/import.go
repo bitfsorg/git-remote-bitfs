@@ -275,6 +275,10 @@ func (ih *importHandler) findLastImportedAnchor(ref string) []byte {
 			continue
 		}
 		if note.NodeType == "commit" && note.AnchorTxID != "" {
+			// Only match notes for the same ref.
+			if note.Ref != "" && note.Ref != ref {
+				continue
+			}
 			// Found a commit note -- decode the anchor TxID.
 			txID, err := hex.DecodeString(note.AnchorTxID)
 			if err == nil && len(txID) > 0 {

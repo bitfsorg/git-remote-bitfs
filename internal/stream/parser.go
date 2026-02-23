@@ -17,7 +17,7 @@ type Parser struct {
 	// This happens when we need to look ahead to determine if the
 	// current command has ended.
 	peeked   string
-	hasPeked bool
+	hasPeeked bool
 	done     bool
 }
 
@@ -76,8 +76,8 @@ func (p *Parser) Next() (*Command, error) {
 // readLine reads the next line from the stream, stripping the trailing newline.
 // If a line was peeked, it returns that instead.
 func (p *Parser) readLine() (string, error) {
-	if p.hasPeked {
-		p.hasPeked = false
+	if p.hasPeeked {
+		p.hasPeeked = false
 		return p.peeked, nil
 	}
 
@@ -96,7 +96,7 @@ func (p *Parser) readLine() (string, error) {
 
 // peekLine reads the next line without consuming it.
 func (p *Parser) peekLine() (string, error) {
-	if p.hasPeked {
+	if p.hasPeeked {
 		return p.peeked, nil
 	}
 	line, err := p.readLine()
@@ -104,14 +104,14 @@ func (p *Parser) peekLine() (string, error) {
 		return "", err
 	}
 	p.peeked = line
-	p.hasPeked = true
+	p.hasPeeked = true
 	return line, nil
 }
 
 // unreadLine pushes a line back so the next readLine returns it.
 func (p *Parser) unreadLine(line string) {
 	p.peeked = line
-	p.hasPeked = true
+	p.hasPeeked = true
 }
 
 // readData reads a "data <count>\n" directive followed by exactly count bytes.

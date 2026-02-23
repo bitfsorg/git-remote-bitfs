@@ -16,6 +16,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
@@ -158,7 +159,7 @@ func (h *Helper) debugf(format string, args ...any) {
 // initUTXOStore lazily initializes the UTXO store.
 func (h *Helper) initUTXOStore() *utxo.Store {
 	if h.utxoStore == nil && h.config.GitDir != "" {
-		storePath := h.config.GitDir + "/bitfs/state.json"
+		storePath := filepath.Join(h.config.GitDir, "bitfs", "state.json")
 		h.utxoStore = utxo.NewStore(storePath)
 		if err := h.utxoStore.Load(); err != nil {
 			h.debugf("warning: loading UTXO store: %v", err)
