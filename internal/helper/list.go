@@ -1,8 +1,23 @@
 package helper
 
 import (
+	"context"
 	"fmt"
 )
+
+// RefInfo describes a remote ref discovered from the blockchain.
+type RefInfo struct {
+	Ref        string // e.g. "refs/heads/main"
+	CommitSHA  string // git commit SHA (40 hex chars)
+	AnchorTxID []byte // anchor transaction ID
+}
+
+// ChainRefLister discovers remote refs from the blockchain.
+// Used during initial clone when no local UTXO state exists.
+type ChainRefLister interface {
+	// ListRefs returns all known refs from the remote.
+	ListRefs(ctx context.Context, remotePubKey []byte) ([]RefInfo, error)
+}
 
 // handleList handles the "list" and "list for-push" commands.
 //
@@ -13,8 +28,8 @@ import (
 //
 // For "list" (fetch):
 //   - Read ref UTXOs from the UTXO store to find known refs.
+//   - If UTXO store is empty and ChainRefLister is available, discover from chain.
 //   - Report refs with their commit SHAs.
-//   - For MVP: read from UTXO store's RefUTXOs.
 //
 // Output format:
 //
@@ -26,23 +41,35 @@ func (h *Helper) handleList(args string) error {
 	store := h.initUTXOStore()
 
 	// Collect known refs from the UTXO store.
-	type refInfo struct {
+	type refEntry struct {
 		sha string
 		ref string
 	}
-	var refs []refInfo
+	var refs []refEntry
 
 	if store != nil {
 		state := store.State()
 		for _, r := range state.RefUTXOs {
 			if r.Ref != "" && r.AnchorTxID != "" {
-				// For now, we use AnchorTxID as a placeholder for the commit SHA.
-				// In a full implementation, git notes would map anchor TxIDs back
-				// to commit SHAs. When we have notes available, we'd look up the
-				// actual git commit SHA.
 				sha := lookupCommitSHA(h, r.Ref, r.AnchorTxID)
 				if sha != "" {
-					refs = append(refs, refInfo{sha: sha, ref: r.Ref})
+					refs = append(refs, refEntry{sha: sha, ref: r.Ref})
+				}
+			}
+		}
+	}
+
+	// If no refs found from UTXO store and we have a chain ref lister,
+	// try discovering refs from the blockchain (initial clone scenario).
+	if len(refs) == 0 && h.config.ChainRefLister != nil && h.parsedURL != nil {
+		ctx := context.Background()
+		chainRefs, err := h.config.ChainRefLister.ListRefs(ctx, []byte(h.parsedURL.Address))
+		if err != nil {
+			h.debugf("warning: chain ref discovery: %v", err)
+		} else {
+			for _, cr := range chainRefs {
+				if cr.Ref != "" && cr.CommitSHA != "" {
+					refs = append(refs, refEntry{sha: cr.CommitSHA, ref: cr.Ref})
 				}
 			}
 		}

@@ -9,7 +9,7 @@
 //   - capabilities: report supported features
 //   - list [for-push]: list refs on remote
 //   - export: push objects to chain (reads fast-export stream)
-//   - import <ref>: fetch objects from chain (future)
+//   - import <ref>: fetch objects from chain (reads Metanet DAG, writes fast-import stream)
 package helper
 
 import (
@@ -18,6 +18,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/config"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/mapper"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
@@ -32,9 +33,11 @@ type HelperConfig struct {
 	GitDir     string // Path to .git directory
 
 	// Optional dependencies (nil is OK for protocol-only testing).
-	Blockchain network.BlockchainService
-	Wallet     *wallet.Wallet
-	VaultIndex uint32
+	Blockchain     network.BlockchainService
+	Wallet         *wallet.Wallet
+	VaultIndex     uint32
+	ChainReader    chain.ChainReader // For fetch/import (nil = import not available)
+	ChainRefLister ChainRefLister    // For discovering remote refs during clone (nil = disabled)
 }
 
 // Helper implements the git remote helper protocol.
@@ -139,12 +142,6 @@ func (h *Helper) handleCapabilities() error {
 		}
 	}
 	return nil
-}
-
-// handleImport handles the "import <ref>" command (fetch from chain).
-// Not yet implemented.
-func (h *Helper) handleImport(refs string) error {
-	return fmt.Errorf("import not yet implemented")
 }
 
 // writef is a helper to write formatted output to stdout.

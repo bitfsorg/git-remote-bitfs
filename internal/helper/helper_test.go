@@ -412,10 +412,10 @@ func TestExportInlineData(t *testing.T) {
 	assert.Contains(t, output, "ok refs/heads/main\n")
 }
 
-func TestImportNotImplemented(t *testing.T) {
+func TestImportNoChainReader(t *testing.T) {
 	h, _, _ := newTestHelper(t, "import refs/heads/main\n\n")
 
 	err := h.Run()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "import not yet implemented")
+	assert.Contains(t, err.Error(), "no chain reader available")
 }
