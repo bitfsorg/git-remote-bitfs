@@ -1,0 +1,22 @@
+# Binaries
+git-remote-bitfs
+*.exe
+
+# Go
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Build
+/bin/
+
+# Worktrees
+.worktrees/
