@@ -39,12 +39,12 @@ git-remote-bitfs/
 
 | Package | Purpose |
 |---------|---------|
-| `github.com/tongxiaofeng/libbitfs` | Shared core: method42, wallet, tx, metanet, network |
+| `github.com/tongxiaofeng/libbitfs-go` | Shared core: method42, wallet, tx, metanet, network |
 | `github.com/bsv-blockchain/go-sdk` | BSV primitives (ec, bip32, transaction, script) |
 | `github.com/stretchr/testify` | Test assertions |
 | `golang.org/x/crypto` | HKDF, Argon2id |
 
-Uses `replace ../libbitfs` directive in go.mod.
+Uses `replace ../libbitfs-go` directive in go.mod.
 
 ## Key Design Decisions
 

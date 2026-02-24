@@ -17,8 +17,8 @@ import (
 
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs/metanet"
-	"github.com/tongxiaofeng/libbitfs/method42"
+	"github.com/tongxiaofeng/libbitfs-go/metanet"
+	"github.com/tongxiaofeng/libbitfs-go/method42"
 )
 
 // --- mock chain reader for import tests ---

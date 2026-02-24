@@ -21,10 +21,10 @@ import (
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/mapper"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/stream"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs/metanet"
-	"github.com/tongxiaofeng/libbitfs/network"
-	libtx "github.com/tongxiaofeng/libbitfs/tx"
-	"github.com/tongxiaofeng/libbitfs/wallet"
+	"github.com/tongxiaofeng/libbitfs-go/metanet"
+	"github.com/tongxiaofeng/libbitfs-go/network"
+	libtx "github.com/tongxiaofeng/libbitfs-go/tx"
+	"github.com/tongxiaofeng/libbitfs-go/wallet"
 )
 
 // ChainPusher abstracts the chain write operations for testability.

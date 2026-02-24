@@ -23,8 +23,8 @@ import (
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/config"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/mapper"
 	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs/network"
-	"github.com/tongxiaofeng/libbitfs/wallet"
+	"github.com/tongxiaofeng/libbitfs-go/network"
+	"github.com/tongxiaofeng/libbitfs-go/wallet"
 )
 
 // HelperConfig holds configuration for the remote helper.
