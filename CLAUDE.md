@@ -61,5 +61,5 @@ Uses `replace ../libbitfs-go` directive in go.mod.
 - Error wrapping: `fmt.Errorf("context: %w", err)`
 - go-sdk `compat/bip32` needs alias: `compat "github.com/bsv-blockchain/go-sdk/compat/bip32"`
 - MetaFlag: `0x6d657461` ("meta" in ASCII)
-- Dust limit: 546 satoshis
+- Dust limit: 1 satoshi (BSV has no dust limit)
 - License: OpenBSV License Version 5
