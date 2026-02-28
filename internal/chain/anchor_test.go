@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tongxiaofeng/libbitfs-go/metanet"
-	"github.com/tongxiaofeng/libbitfs-go/tx"
+	"github.com/bitfsorg/libbitfs-go/metanet"
+	"github.com/bitfsorg/libbitfs-go/tx"
 )
 
 func TestBuildAnchorFirstPush(t *testing.T) {

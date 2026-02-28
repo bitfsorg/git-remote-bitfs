@@ -1,13 +1,13 @@
-module github.com/tongxiaofeng/git-remote-bitfs
+module github.com/bitfsorg/git-remote-bitfs
 
 go 1.25.6
 
-replace github.com/tongxiaofeng/libbitfs-go => ../libbitfs-go
+replace github.com/bitfsorg/libbitfs-go => ../libbitfs-go
 
 require (
 	github.com/bsv-blockchain/go-sdk v1.2.18
 	github.com/stretchr/testify v1.11.1
-	github.com/tongxiaofeng/libbitfs-go v0.0.0-00010101000000-000000000000
+	github.com/bitfsorg/libbitfs-go v0.0.0-00010101000000-000000000000
 )
 
 require (

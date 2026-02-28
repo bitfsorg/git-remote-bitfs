@@ -8,8 +8,8 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 
-	"github.com/tongxiaofeng/libbitfs-go/metanet"
-	"github.com/tongxiaofeng/libbitfs-go/method42"
+	"github.com/bitfsorg/libbitfs-go/metanet"
+	"github.com/bitfsorg/libbitfs-go/method42"
 )
 
 // ReadResult holds the data for one file read from chain.

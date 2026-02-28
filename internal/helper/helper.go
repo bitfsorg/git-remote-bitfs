@@ -19,12 +19,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/config"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/mapper"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs-go/network"
-	"github.com/tongxiaofeng/libbitfs-go/wallet"
+	"github.com/bitfsorg/git-remote-bitfs/internal/chain"
+	"github.com/bitfsorg/git-remote-bitfs/internal/config"
+	"github.com/bitfsorg/git-remote-bitfs/internal/mapper"
+	"github.com/bitfsorg/git-remote-bitfs/internal/utxo"
+	"github.com/bitfsorg/libbitfs-go/network"
+	"github.com/bitfsorg/libbitfs-go/wallet"
 )
 
 // HelperConfig holds configuration for the remote helper.

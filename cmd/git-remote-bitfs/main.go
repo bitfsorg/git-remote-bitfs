@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/helper"
+	"github.com/bitfsorg/git-remote-bitfs/internal/helper"
 )
 
 func main() {

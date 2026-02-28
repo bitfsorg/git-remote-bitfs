@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs-go/metanet"
-	"github.com/tongxiaofeng/libbitfs-go/method42"
+	"github.com/bitfsorg/git-remote-bitfs/internal/chain"
+	"github.com/bitfsorg/git-remote-bitfs/internal/utxo"
+	"github.com/bitfsorg/libbitfs-go/metanet"
+	"github.com/bitfsorg/libbitfs-go/method42"
 )
 
 // --- mock chain reader for import tests ---

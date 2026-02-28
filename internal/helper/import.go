@@ -8,8 +8,8 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/stream"
+	"github.com/bitfsorg/git-remote-bitfs/internal/chain"
+	"github.com/bitfsorg/git-remote-bitfs/internal/stream"
 )
 
 // importHandler encapsulates the import logic for fetching from chain.

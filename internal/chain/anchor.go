@@ -7,9 +7,9 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 
-	"github.com/tongxiaofeng/libbitfs-go/metanet"
-	"github.com/tongxiaofeng/libbitfs-go/network"
-	"github.com/tongxiaofeng/libbitfs-go/tx"
+	"github.com/bitfsorg/libbitfs-go/metanet"
+	"github.com/bitfsorg/libbitfs-go/network"
+	"github.com/bitfsorg/libbitfs-go/tx"
 )
 
 // AnchorParams holds parameters for building an anchor TX.

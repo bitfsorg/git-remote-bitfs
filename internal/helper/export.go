@@ -16,15 +16,15 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/chain"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/config"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/mapper"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/stream"
-	"github.com/tongxiaofeng/git-remote-bitfs/internal/utxo"
-	"github.com/tongxiaofeng/libbitfs-go/metanet"
-	"github.com/tongxiaofeng/libbitfs-go/network"
-	libtx "github.com/tongxiaofeng/libbitfs-go/tx"
-	"github.com/tongxiaofeng/libbitfs-go/wallet"
+	"github.com/bitfsorg/git-remote-bitfs/internal/chain"
+	"github.com/bitfsorg/git-remote-bitfs/internal/config"
+	"github.com/bitfsorg/git-remote-bitfs/internal/mapper"
+	"github.com/bitfsorg/git-remote-bitfs/internal/stream"
+	"github.com/bitfsorg/git-remote-bitfs/internal/utxo"
+	"github.com/bitfsorg/libbitfs-go/metanet"
+	"github.com/bitfsorg/libbitfs-go/network"
+	libtx "github.com/bitfsorg/libbitfs-go/tx"
+	"github.com/bitfsorg/libbitfs-go/wallet"
 )
 
 // ChainPusher abstracts the chain write operations for testability.

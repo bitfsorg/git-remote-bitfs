@@ -9,9 +9,9 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 
-	"github.com/tongxiaofeng/libbitfs-go/method42"
-	"github.com/tongxiaofeng/libbitfs-go/network"
-	"github.com/tongxiaofeng/libbitfs-go/tx"
+	"github.com/bitfsorg/libbitfs-go/method42"
+	"github.com/bitfsorg/libbitfs-go/network"
+	"github.com/bitfsorg/libbitfs-go/tx"
 )
 
 // NodeOp represents a fully prepared node operation ready for TX building.
