@@ -85,9 +85,9 @@ func (w *Writer) Push(ctx context.Context, params *PushParams) (*PushResult, err
 
 		// Determine batch op type based on whether we have an input UTXO.
 		if op.InputUTXO != nil {
-			batchOp.Type = tx.BatchOpNodeUpdate
+			batchOp.Type = tx.OpUpdate
 		} else {
-			batchOp.Type = tx.BatchOpChildCreate
+			batchOp.Type = tx.OpCreate
 		}
 
 		batch.AddNodeOp(batchOp)

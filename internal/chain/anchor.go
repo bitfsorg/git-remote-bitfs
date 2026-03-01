@@ -112,10 +112,10 @@ func BuildAnchor(params *AnchorParams) (*AnchorResult, error) {
 	if params.RefUTXO != nil && !params.Force {
 		// Subsequent push: spend the existing branch head UTXO.
 		batchOp.InputUTXO = params.RefUTXO
-		batchOp.Type = tx.BatchOpNodeUpdate
+		batchOp.Type = tx.OpUpdate
 	} else {
 		// First push or force push: no existing UTXO to spend.
-		batchOp.Type = tx.BatchOpChildCreate
+		batchOp.Type = tx.OpCreate
 	}
 
 	batch.AddNodeOp(batchOp)
@@ -225,9 +225,9 @@ func BuildMultiRefAnchor(params *MultiRefAnchorParams) (*MultiRefAnchorResult, e
 
 		if ref.RefUTXO != nil && !ref.Force {
 			batchOp.InputUTXO = ref.RefUTXO
-			batchOp.Type = tx.BatchOpNodeUpdate
+			batchOp.Type = tx.OpUpdate
 		} else {
-			batchOp.Type = tx.BatchOpChildCreate
+			batchOp.Type = tx.OpCreate
 		}
 
 		batch.AddNodeOp(batchOp)
