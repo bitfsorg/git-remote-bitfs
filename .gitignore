@@ -14,6 +14,7 @@
 
 # OS
 .DS_Store
+.obsidian/
 
 # Build
 /bin/
